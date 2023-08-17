@@ -1,0 +1,15 @@
+#Dendrogram Plotting
+#setup
+if (!requireNamespace("BiocManager", quietly=TRUE))
+  install.packages("BiocManager")
+BiocManager::install("fastreeR")
+
+#Dendrogram
+vcf1.fn <- "lansing_seedlings_nominoralleles_nomissing_biallelic_highqual_noindels.recode.vcf"
+vcf2tree(
+  vcf1.fn,
+  threads = 2,
+  ignoreMissing = FALSE,
+  onlyHets = FALSE,
+  ignoreHets = FALSE
+)
