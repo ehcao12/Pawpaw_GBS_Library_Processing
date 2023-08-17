@@ -1,0 +1,57 @@
+#Necessary apps to download
+#BWA(0.7.17)
+#Java(11)
+#perl
+#GBSX (1.3)
+#zlib (1.2.13)
+#SAMtools (1.17)
+#BCFtools (1.17)
+#VCFtools (1.16)
+#HTSLibrary (1.17)
+#GNU parallel 
+#plink (1.90)
+#plink2
+#prettify (1.05)
+#picard (3.0)
+#PopLDecay (3.42)
+
+#demultiplexing
+
+java -jar ~/GBS/GBSX-1.3/releases/GBSX_v1.3/GBSX_v1.3.jar --Demultiplexer 
+        -f1 ~/GBS/GBSX-1.3/J2_S1_L001_R1_001.fastq.gz -i ~GBS/GBSX-1.3/barcodes -gzip TRUE -t 1
+
+#aligning
+bwa index -a bwtsw Astri105_genome.fasta Astri105_genome
+bash bwa-mem.sh
+#the contents inside bwa-mem.sh is {
+#! /usr/bin/bash
+
+for accession in $(ls *.R1.fastq.gz)
+do
+bwa mem -t 60 Astri105_genome.fa $accession | samtools sort -@60 -o "align/${accession}_align.bam"
+done
+}
+
+#adding read groups and indexing
+ls *align.bam | sed -r 's/_align.bam//' | parallel --jobs 10 java -jar picard.jar AddOrReplaceReadGroups 
+        -I {}_align.bam -O {}_align_rg.bam --RGLB lansing_seedlings --RGPL Illumina --RGPU run --RGSM {}
+ls *_rg.bam | sed -r 's/.bam//' | parallel --jobs 10 samtools index {}.bam > {}.bai
+
+#indentifying haplotypes
+java -jar gatk-package-4.2.1.0-local.jar CreateSequenceDictionary -R ~/genome/Astri105_genome.fa -O Astri105_genome.dict
+samtools faidx Astri105_genome.fa
+ls *_rg.bam | sed -r 's/_align_rg.bam//' | parallel --jobs 2 ~/GBS/gatk-4.2.1.0/gatk HaplotypeCaller 
+        -R ~/GBS/GBSX-1.3/align/Astri105_genome.fa -I {}_align_rg.bam -O {}.gvcf -ERC GVCF
+
+#merging gvcf files
+grep ">" Astri105_genome.fa |sed 's/>//g' > interval.list
+~/GBS/gatk-4.2.1.0/gatk GenomicsDBImport --reader-threads 20 -genomicsdb-workspace-path genomics_db/ 
+        -L interval.list $(ls *.gvcf | perl -e 'while (my $file = <STDIN>) {chomp($file); print "-V ",$file," ";}')
+~/GBS/gatk-4.2.1.0/gatk GenotypeGVCFs -R ~/genome/Astri105_genome.fa -V gendb://genomics_db/ -O lansing_seedlingsfinal.vcf.gz
+
+#Editing
+vcftools --gzvcf lansing_seedlings.vcf.gz --maf 0.05 --max-missing 0.8 
+        --recode --recode-INFO-all --out lansing_seedlings_nominoralleles_nomissing
+
+vcftools --gzvcf lansing_and_james_seedlings.vcf.gz --maf 0.05 --max-missing 0.8 --minQ 100 --max-alleles 2 --remove-indels --recode 
+        --recode-INFO-all --out lansing_and_james_seedlings_nominoralleles_nomissing_biallelic_highqual_noindels20
