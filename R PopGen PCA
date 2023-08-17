@@ -1,0 +1,69 @@
+#setup
+if(!require("BiocManager",quietly = TRUE))
+  install.packages("BiocManager")
+
+BiocManager::install("SNPRelate")
+
+#commands
+#format conversion
+vcf1.fn <- "lansing_seedlings_nominoralleles_nomissing_biallelic_highqual_noindels.recode.vcf"
+snpgdsVCF2GDS(vcf1.fn, "vcf1.gds", method="biallelic.only")
+snpgdsSummary("vcf1.gds")
+
+#PCA
+genofile1 <- snpgdsOpen("vcf1.gds")
+snpset1 <- snpgdsLDpruning(genofile1, ld.threshold=0.2, autosome.only=FALSE)
+str(snpset1)
+names(snpset1)
+snpset1.id <- unlist(unname(snpset1))
+pca <- snpgdsPCA(genofile1, snp.id=snpset1.id, num.thread=2, autosome.only=FALSE)
+pc.percent <- pca$varprop*100
+head(round(pc.percent, 2))
+tab <- data.frame(
+        sample.id = pca$sample.id, 
+        EV1 = pca$eigenvect[,1], 
+        EV2 = pca$eigenvect[,2],
+        stringsAsFactors = FALSE)
+head(tab)
+plot(tab$EV2, tab$EV1, xlab="eigenvector 2", ylab="eigenvector 1")
+
+#dataset2 with color
+#conversions
+james <- "/Users/ericacao/Desktop/james_seedlings_nominoralleles_nomissing_biallelic_highqual_noindels.recode.vcf"
+snpgdsVCF2GDS(james, 
+              "james.gds", 
+              method="biallelic.only")
+snpgdsSummary("james.gds")
+#pca
+palette("polychrome")
+jenofile <- snpgdsOpen("james.gds", allow.duplicate = TRUE)
+str(snpsetj)
+snpsetj <- snpgdsLDpruning(
+        jenofile, 
+        ld.threshold = 0.2, 
+        autosome.only = FALSE)
+snpsetj.id <- unlist(unname(snpsetj))
+pca <- (snpgdsPCA(jenofile, snp.id = snpsetj.id,num.thread = 2, autosome.only = FALSE))
+pc.percent <- pca$varprop*100
+head(round(pc.percent,2))
+pop_code <- scan("popcode.txt", what = character(length = 2))
+head(cbind(pca$sample.id,pop_code))
+tab2 <- data.frame(
+        sample.id = pca$sample.id, 
+        pop = factor(pop_code)[match(pca$sample.id, sample.id)], 
+        EV1 = pca$eigenvect[,1], 
+        EV2 = pca$eigenvect[,2], 
+        stringsAsFactors = FALSE)
+head(tab2)
+plot(
+        tab2$EV2, 
+        tab2$EV1, 
+        col=as.integer(tab2$pop), 
+        xlab="PC 1", 
+        ylab="PC 2", 
+        pch="o")
+legend(
+        "bottomright", 
+        legend=levels(tab2$pop), 
+        pch="o", 
+        col=1:nlevels(tab2$pop))
